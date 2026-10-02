@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Space Shooter</title>
+<style>
+:root{--bg:#0b1020;--fg:#e8ecf8;--accent:#4cc9f0;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1020;--fg:#e8ecf8}}
+:root[data-theme="dark"]{--bg:#0b1020;--fg:#e8ecf8}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:8px;box-sizing:border-box;overflow:hidden}
+.bar{display:flex;gap:20px;font-weight:700}
+.wrap{position:relative;width:min(96vw,640px);aspect-ratio:4/5;max-height:calc(100% - 40px)}
+canvas{width:100%;height:100%;display:block;background:#050814;border-radius:12px;touch-action:none;cursor:crosshair}
+.msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(5,8,20,.8);border-radius:12px;text-align:center;padding:12px}
+button{background:var(--accent);color:#04101a;border:0;border-radius:10px;padding:10px 22px;font-size:1rem;font-weight:800;cursor:pointer}
+small{opacity:.7}
+</style>
+</head>
+<body>
+<div class="bar"><span>Score <b id="s">0</b></span><span>Lives <b id="l">3</b></span><span>Best <b id="b">0</b></span></div>
+<div class="wrap">
+<canvas id="c" width="640" height="800"></canvas>
+<div class="msg" id="m"><div id="mt" style="font-size:1.4rem;font-weight:800">🚀 Space Shooter</div><button id="go">Play</button><small>Move: WASD / arrows · Aim &amp; shoot: mouse<br>Touch: drag to move, auto-fire</small></div>
+</div>
+<script>
+const cv=document.getElementById('c'),x=cv.getContext('2d'),W=cv.width,H=cv.height;
+const $=id=>document.getElementById(id);
+let P,B,E,F,score,lives,best=0,run=false,last=0,spawn=0,keys={},mouse={x:W/2,y:0,down:false},touch=null,cd=0,inv=0;
+try{best=+localStorage.getItem('shooterBest')||0}catch(e){}
+$('b').textContent=best;
+const stars=Array.from({length:60},()=>({x:Math.random()*W,y:Math.random()*H,v:20+Math.random()*60,r:Math.random()*1.6+.4}));
+function start(){P={x:W/2,y:H-100,r:16};B=[];E=[];F=[];score=0;lives=3;spawn=0;inv=0;run=true;
+$('s').textContent=0;$('l').textContent=3;$('m').style.display='none';last=performance.now();requestAnimationFrame(loop)}
+function pos(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}}
+cv.addEventListener('pointermove',e=>{const p=pos(e);if(e.pointerType==='touch'){touch=p}else{mouse.x=p.x;mouse.y=p.y}});
+cv.addEventListener('pointerdown',e=>{const p=pos(e);if(e.pointerType==='touch')touch=p;else{mouse.down=true;mouse.x=p.x;mouse.y=p.y}});
+addEventListener('pointerup',e=>{mouse.down=false;if(e.pointerType==='touch')touch=null});
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=1;if(e.key===' '||e.key.startsWith('Arrow'))e.preventDefault();if(e.key==='Enter'&&!run)start()});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=0);
+$('go').onclick=start;
+function burst(px,py,n,c){for(let i=0;i<n;i++){const a=Math.random()*6.28,v=40+Math.random()*160;F.push({x:px,y:py,vx:Math.cos(a)*v,vy:Math.sin(a)*v,t:.5+Math.random()*.4,c})}}
+function shoot(ax,ay){const a=Math.atan2(ay-P.y,ax-P.x);B.push({x:P.x,y:P.y,vx:Math.cos(a)*620,vy:Math.sin(a)*620})}
+function update(dt){
+let dx=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0),dy=(keys.s||keys.arrowdown?1:0)-(keys.w||keys.arrowup?1:0);
+if(touch){const tx=touch.x-P.x,ty=touch.y-80-P.y,d=Math.hypot(tx,ty);if(d>6){dx=tx/d;dy=ty/d}}
+const m=Math.hypot(dx,dy)||1;P.x=Math.min(W-P.r,Math.max(P.r,P.x+dx/m*300*dt*(dx||dy?1:0)));P.y=Math.min(H-P.r,Math.max(P.r,P.y+dy/m*300*dt*(dx||dy?1:0)));
+cd-=dt;
+if(cd<=0&&(mouse.down||keys[' ']||touch)){cd=.16;if(touch)shoot(P.x,0);else shoot(mouse.x,mouse.down?mouse.y:P.y-100)}
+inv=Math.max(0,inv-dt);
+spawn-=dt;
+if(spawn<=0){spawn=Math.max(.3,1.1-score/400);const big=Math.random()<.2;E.push({x:30+Math.random()*(W-60),y:-30,r:big?26:15,hp:big?3:1,v:(big?50:80)+Math.random()*40+score/10,ph:Math.random()*6})}
+B.forEach(b=>{b.x+=b.vx*dt;b.y+=b.vy*dt});B=B.filter(b=>b.x>-10&&b.x<W+10&&b.y>-10&&b.y<H+10);
+E.forEach(e=>{e.y+=e.v*dt;e.x+=Math.sin(e.y/40+e.ph)*40*dt});
+for(const e of E){for(const b of B){if(!b.dead&&Math.hypot(e.x-b.x,e.y-b.y)<e.r+3){b.dead=1;e.hp--;burst(b.x,b.y,3,'#ffd166');if(e.hp<=0){e.dead=1;score+=e.r>20?30:10;$('s').textContent=score;burst(e.x,e.y,16,'#ef476f')}}}
+if(!e.dead&&!inv&&Math.hypot(e.x-P.x,e.y-P.y)<e.r+P.r-4){e.dead=1;burst(e.x,e.y,16,'#ef476f');lives--;inv=1.5;$('l').textContent=lives;burst(P.x,P.y,20,'#4cc9f0');if(lives<=0)return over()}
+if(e.y>H+40){e.dead=1;score=Math.max(0,score-5);$('s').textContent=score}}
+B=B.filter(b=>!b.dead);E=E.filter(e=>!e.dead);
+F.forEach(f=>{f.x+=f.vx*dt;f.y+=f.vy*dt;f.t-=dt});F=F.filter(f=>f.t>0);
+stars.forEach(s=>{s.y+=s.v*dt;if(s.y>H){s.y=0;s.x=Math.random()*W}})}
+function over(){run=false;if(score>best){best=score;$('b').textContent=best;try{localStorage.setItem('shooterBest',best)}catch(e){}}
+$('mt').textContent='Game over — score '+score;$('go').textContent='Play again';$('m').style.display='flex'}
+function draw(){
+x.clearRect(0,0,W,H);x.fillStyle='#fff';
+stars.forEach(s=>{x.globalAlpha=.3+s.r/3;x.beginPath();x.arc(s.x,s.y,s.r,0,7);x.fill()});x.globalAlpha=1;
+if(!P)return;
+E.forEach(e=>{x.fillStyle=e.r>20?'#9b5de5':'#ef476f';x.beginPath();x.arc(e.x,e.y,e.r,0,7);x.fill();x.fillStyle='#0b1020';x.beginPath();x.arc(e.x-e.r/3,e.y,e.r/6,0,7);x.arc(e.x+e.r/3,e.y,e.r/6,0,7);x.fill()});
+x.fillStyle='#ffd166';B.forEach(b=>{x.beginPath();x.arc(b.x,b.y,3.5,0,7);x.fill()});
+F.forEach(f=>{x.globalAlpha=Math.max(0,f.t*2);x.fillStyle=f.c;x.fillRect(f.x-2,f.y-2,4,4)});x.globalAlpha=1;
+if(!inv||Math.floor(inv*10)%2){x.fillStyle='#4cc9f0';x.beginPath();x.moveTo(P.x,P.y-P.r-4);x.lineTo(P.x+P.r,P.y+P.r);x.lineTo(P.x,P.y+P.r*.5);x.lineTo(P.x-P.r,P.y+P.r);x.closePath();x.fill()}
+if(!touch&&run){x.strokeStyle='rgba(255,255,255,.6)';x.lineWidth=1.5;x.beginPath();x.arc(mouse.x,mouse.y,9,0,7);x.moveTo(mouse.x-14,mouse.y);x.lineTo(mouse.x+14,mouse.y);x.moveTo(mouse.x,mouse.y-14);x.lineTo(mouse.x,mouse.y+14);x.stroke()}}
+function loop(t){const dt=Math.min(.05,(t-last)/1000);last=t;if(run){update(dt);draw();if(run)requestAnimationFrame(loop)}else draw()}
+draw();
+</script>
+</body>
+</html>
